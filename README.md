@@ -116,5 +116,5 @@ second core's start and its misread detection come from X0X, [Melodee](https://g
 PR #27 with Charles Vestal's register reads. The switch sequence follows the JieLi AC79 SDK
 (Apache-2.0). The study's Credits section lists more.
 
-GPL-3.0-only, as X0X ([LICENSE](LICENSE)), except `firmware/hal/fm1_clk320.h`, which is MIT so any
-FM-1 firmware can use it; see [LICENSING.md](LICENSING.md).
+GPL-3.0-only, as X0X ([LICENSE](LICENSE)), except `firmware/hal/fm1_clk320.h` and `firmware/hal/fm1_clk320_probe.h`,
+which are MIT so any FM-1 firmware can use them; see [LICENSING.md](LICENSING.md).
