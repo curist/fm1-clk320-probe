@@ -308,6 +308,16 @@ static void fm1_main(void)
         fm1_delay_ms(2500);
         fm1_wdt_feed();
     }
+    {   /* PROBE: 360 -> 320 MHz, one core, before anything runs (plat_fm1.c) */
+        draw_text_box(0, 160, 240, &FONT_S, "PROBE: SYS 360 -> 320 MHZ", C_AMB, 1);
+        lcd_sync();                                 /* no LCD DMA running through the switch */
+        plat_clk320_run();
+        draw_text_box(0, 180, 240, &FONT_S, plat_clk320_state(), C_HI, 1);
+        draw_text_box(0, 200, 240, &FONT_S, plat_clk320_reason(), C_HI, 1);
+        fm1_wdt_feed();
+        fm1_delay_ms(1500);
+        fm1_wdt_feed();
+    }
     x0x_dbg.boots++;
     x0x_dbg.max_us = 0;
     fm1_input_init();
@@ -348,6 +358,15 @@ static void fm1_main(void)
     for (;;) {
         fm1_wdt_feed();
         usb_retry(fm1_ms);
+        {   /* PROBE: the audio rate, from the halves played against TIMER5 (the crystal), every 2 s */
+            static uint32_t t0, h0;
+            if (fm1_ms - t0 >= 2000u) {
+                if (t0)
+                    plat_fs_meas = (x0x_dbg.halves - h0) * HALF_FRAMES * 1000u / (fm1_ms - t0);
+                t0 = fm1_ms;
+                h0 = x0x_dbg.halves;
+            }
+        }
         if (fm1_ms > 30000u && bootguard.pending) {     /* a crash or hang in the first 30 s counts */
             bootguard.pending = 0;
             bootguard.failed = 0;
@@ -430,6 +449,7 @@ void fm1_cstart(void)
         bootguard.failed = 0;
         bootguard.pending = 0;
     }
+    plat_clk320_power_on((p3 & 1u) && !(p3 & (4u | 0x40u)));   /* PROBE: a reset mid-switch is not counted */
     if (bootguard.pending)
         bootguard.failed++;
     bootguard.pending = 1;

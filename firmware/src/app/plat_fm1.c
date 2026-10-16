@@ -143,6 +143,105 @@ int plat_cpu2_run(void (*fn)(uint32_t), uint32_t arg) { return fm1_cpu1_run(fn, 
 int plat_cpu2_wait(void) { return fm1_cpu1_wait(); }
 int plat_cpu2_gave_up(void) { return fm1_c1_gave_up; }
 uint32_t plat_cpu2_bad(void) { return fm1_c1_mb.bad; }
+
+/* PROBE: SYS 360 -> 320 MHz at boot in JieLi's order (hal/fm1_clk320.h). The state
+ * survives resets (.noinit) and is forgotten at power-off. A reset while the switch is under way
+ * (ARMED) is not counted as a failed boot, and no switch is tried again until power-off (TRIPPED). */
+#define CLKP_MAGIC 0x434C4B33u                          /* "CLK3" */
+enum { CLKP_NONE, CLKP_ARMED, CLKP_DONE, CLKP_SKIPPED, CLKP_TRIPPED, CLKP_KEPT };
+static const char *const CLKP_N[] = {"-", "ARMED", "320 OK", "SKIPPED", "TRIPPED: 360 UNTIL OFF", "320 (KEPT BY RESET)"};
+static const char *const CLKP_E[] = {"", "ALREADY 320", "SYS MODE", "PLL2 NOT 270", "PLL2 REF", "DIVIDERS",
+                                     "SYS NOT ON PLL", "USB ON PLL2", "SDRAM", "CACHE B9", "VERIFY", "CONTROL: STAYS 360"};
+struct clkp_s {
+    uint32_t magic, state, reason, tries, trips, mult_before, mult_after;
+    uint32_t was_sys_div, was_sfc_baud, was_sfc_con, was_cache, was_clk_con2;
+    uint32_t loop_before, loop_after;                   /* fm1_clk320_loop_ticks around the switch */
+} clkp __attribute__((section(".noinit")));
+uint32_t plat_fs_meas;                                  /* the audio rate, measured against TIMER5 (main_fm1.c) */
+
+/* SOAK (probe build, X0X_SOAK_MIN > 0): PERF TEST back to back for that many minutes from boot (ui.c
+ * soak_tick); kept across resets so a crash mid-soak is reported after the reboot, forgotten at power-off */
+#define SOAK_MAGIC 0x534F414Bu                          /* "SOAK" */
+enum { SOAK_IDLE, SOAK_RUNNING, SOAK_DONE, SOAK_INTERRUPTED, SOAK_STOPPED };
+struct soak_s {
+    uint32_t magic, state, runs, elapsed_s, lost_at_s, bad, gave_up, xruns, xr0;
+    uint32_t max_load10, max_peak, fs_min, fs_max, mhz10, shown;
+} soak __attribute__((section(".noinit")));
+
+void plat_clk320_power_on(int power_on)                 /* fm1_cstart, before the boot guard counts */
+{
+    if (power_on || clkp.magic != CLKP_MAGIC) {
+        memset(&clkp, 0, sizeof clkp);
+        clkp.magic = CLKP_MAGIC;
+    }
+    if (power_on || soak.magic != SOAK_MAGIC) {
+        memset(&soak, 0, sizeof soak);
+        soak.magic = SOAK_MAGIC;
+    }
+    if (soak.state == SOAK_RUNNING) {                   /* a reset during the soak: a crash or a hang */
+        soak.state = SOAK_INTERRUPTED;
+        soak.shown = 0;
+    }
+    if (clkp.state == CLKP_ARMED) {                     /* reset during the switch */
+        clkp.state = CLKP_TRIPPED;
+        clkp.trips++;
+        bootguard.pending = 0;                          /* not a failed boot: not towards safe mode or UBOOT */
+    }
+}
+
+void plat_clk320_run(void)                              /* fm1_main: one core, IRQs off, nothing running */
+{
+    fm1_clk320_t p;
+    uint32_t f;
+    int rc;
+    if (clkp.state == CLKP_TRIPPED)
+        return;
+    clkp.mult_before = fm1_clk320_mult();
+    f = irq_save();
+    clkp.loop_before = fm1_clk320_loop_ticks();         /* at the boot loader's clock (360 if PLL2 is 270) */
+    irq_restore(f);
+    clkp.loop_after = clkp.loop_before;
+    rc = fm1_clk320_check(&p);
+#if !X0X_CLK320
+    if (rc == FM1_CLK320_OK)
+        rc = FM1_CLK320_ECONTROL;                       /* the control build: checked, not switched */
+#endif
+    if (rc) {
+        clkp.state = rc == FM1_CLK320_EALREADY ? CLKP_KEPT : CLKP_SKIPPED;
+        clkp.reason = (uint32_t)rc;
+        clkp.mult_after = clkp.mult_before;
+        return;
+    }
+    clkp.tries++;
+    clkp.state = CLKP_ARMED;
+    fm1_wdt_feed();
+    f = irq_save();
+    FL_FAR(fm1_clk320_switch)(&p);
+    clkp.loop_after = fm1_clk320_loop_ticks();
+    irq_restore(f);
+    fm1_wdt_feed();
+    clkp.mult_after = fm1_clk320_mult();
+    if (clkp.mult_after == FM1_CLK320_MULT_320) {
+        clkp.state = CLKP_DONE;
+        clkp.reason = 0;
+    } else {
+        clkp.state = CLKP_SKIPPED;
+        clkp.reason = FM1_CLK320_EVERIFY;
+    }
+}
+
+const char *plat_clk320_state(void) { return clkp.state < 6u ? CLKP_N[clkp.state] : "?"; }
+const char *plat_clk320_reason(void) { return clkp.state == CLKP_SKIPPED && clkp.reason < 12u ? CLKP_E[clkp.reason] : ""; }
+uint32_t plat_clk320_mult(void) { return clkp.mult_after; }
+/* the clock now x 10, from the loop timed at boot: 360 x before / after; 0 when the boot did not start at 360 */
+uint32_t plat_clk320_loop_mhz10(void)
+{
+    if (clkp.mult_before != FM1_CLK320_MULT_360 || !clkp.loop_after)
+        return 0;
+    return (3600u * clkp.loop_before + clkp.loop_after / 2u) / clkp.loop_after;
+}
+uint32_t plat_clk320_loop_before(void) { return clkp.loop_before; }
+uint32_t plat_clk320_loop_after(void) { return clkp.loop_after; }
 uint32_t plat_xruns(void) { return audio_xruns; }
 
 static int perf_cyc_ok, perf_stalls_on;

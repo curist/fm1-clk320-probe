@@ -15,6 +15,7 @@
 #include "fm1_lcd_hw.h"
 #include "fm1_cpu1.h"
 #include "fm1_flash.h"
+#include "fm1_clk320_probe.h" /* PROBE: SYS 320 MHz at boot (fm1_clk320.h: the study listing) */
 #include "fm1_xip.h"
 #include "fm1_perf.h"
 
@@ -31,6 +32,12 @@ static inline int32_t clamp(int32_t v, int32_t lo, int32_t hi) { return v < lo ?
 #define FELUCCA_OTA 1             /* M-UPGRADE update entry: keeps the web installer working */
 #ifndef X0X_CDC
 #define X0X_CDC 0                 /* USB serial console off: one plain MIDI interface */
+#endif
+#ifndef X0X_CLK320
+#define X0X_CLK320 1              /* PROBE: 1 = switch to 320 MHz at boot; 0 = the control (stays at 360) */
+#endif
+#ifndef X0X_SOAK_MIN
+#define X0X_SOAK_MIN 0u           /* PROBE: minutes of PERF TEST back to back from boot, then the result (0: off) */
 #endif
 #define FELUCCA_CDC X0X_CDC
 #ifndef X0X_UAC

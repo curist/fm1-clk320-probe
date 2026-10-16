@@ -19,6 +19,8 @@ recipients its complete corresponding source under the same licence.
 | Break generator (`dsp/breaks*`) | ported from [schwung-breakbeat](https://github.com/mestela/schwung-breakbeat) (BB Gen) by mestela, **used with the author's permission** (that repository carries no licence file) | GPL-3.0-only here, by permission |
 | The idea of a browser emulator for FM-1 firmware (`web/emu/`) | [Groove OS](https://www.groove-os.com/) by Peter Gombos, whose site runs its firmware in the browser; no code from it | credit only |
 | Everything else in `firmware/src/{app,dsp,seq}`, `host/`, `tests/` | X0X | GPL-3.0-only |
+| fm1-clk320-probe: `firmware/hal/fm1_clk320.h` (the 320 MHz switch) | written for the [FM-1 320 MHz Dual Core study](https://claude.ai/code/artifact/49894621-e5be-4d22-a585-71fdc09626c6); the sequence after the JieLi AC79 SDK's `sys_clock_update` (Apache-2.0) | **MIT** (keep the JieLi credit when reusing it) |
+| fm1-clk320-probe: `firmware/hal/fm1_clk320_probe.h`, the probe and soak code in `firmware/src/`, `tools/build_probe.sh` | fm1-clk320-probe | GPL-3.0-only |
 
 No recorded breaks are in this tree or in the default firmware: the built-in break loops are
 generated at build time by X0X's own 909 code. `tools/import_breaks.py`,

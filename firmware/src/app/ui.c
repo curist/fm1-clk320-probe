@@ -1529,6 +1529,75 @@ static void perf_test_tick(void)
 
 static void set_view(int v);
 
+/* SOAK (probe build): PERF TEST back to back for X0X_SOAK_MIN minutes, 5 s after boot, then the
+ * result stays on PERF (plat_fm1.c keeps the state across a crash) */
+static uint32_t soak_t0, soak_seen_done;
+static int soak_pass(void)
+{
+    return soak.state == SOAK_DONE && !soak.gave_up && !soak.bad && !soak.xruns;
+}
+
+static void soak_tick(void)
+{
+#if X0X_SOAK_MIN
+    uint32_t now = plat_ms();
+    if (soak.state != SOAK_IDLE && soak.state != SOAK_RUNNING) {
+        if (!soak.shown) {                            /* the result (or the crash report) on screen once */
+            soak.shown = 1;
+            set_view(V_PERF);
+        }
+        return;
+    }
+    if (soak.state == SOAK_IDLE) {
+        if (now < 5000u || perf.test != PT_IDLE)
+            return;
+        soak.state = SOAK_RUNNING;
+        soak.xr0 = plat_xruns();
+        soak_t0 = now;
+        soak_seen_done = 0;
+        set_view(V_PERF);
+        perf_test_start();
+        return;
+    }
+    soak.elapsed_s = (now - soak_t0) / 1000u;
+    if (plat_cpu2_gave_up() && !soak.gave_up) {
+        soak.gave_up = (uint32_t)plat_cpu2_gave_up();
+        soak.lost_at_s = soak.elapsed_s;
+    }
+    soak.bad = plat_cpu2_bad();
+    soak.xruns = plat_xruns() - soak.xr0;
+    if (plat_fs_meas) {
+        if (!soak.fs_min || plat_fs_meas < soak.fs_min)
+            soak.fs_min = plat_fs_meas;
+        if (plat_fs_meas > soak.fs_max)
+            soak.fs_max = plat_fs_meas;
+    }
+    if (perf.mhz10)
+        soak.mhz10 = perf.mhz10;
+    if (perf.test == PT_IDLE && perf.phase == 4) {    /* stopped by a key (HOME / PLAY) */
+        soak.state = SOAK_STOPPED;
+        return;
+    }
+    if (perf.test == PT_DONE && perf.phase == 4 && !soak_seen_done) {
+        soak_seen_done = 1;
+        soak.runs++;
+        if (perf.res_load[2] > soak.max_load10)
+            soak.max_load10 = perf.res_load[2];
+        if (perf.res_peak[2] > soak.max_peak)
+            soak.max_peak = perf.res_peak[2];
+        if (soak.elapsed_s >= X0X_SOAK_MIN * 60u) {
+            soak.state = SOAK_DONE;
+            soak.shown = 1;
+            say(soak_pass() ? "SOAK PASSED" : "SOAK FAILED", 0);
+            return;
+        }
+        perf_test_start();
+    } else if (perf.test != PT_DONE) {
+        soak_seen_done = 0;
+    }
+#endif
+}
+
 static void run_action(int act, int arg)
 {
     char t[28], *q;
@@ -3390,11 +3459,82 @@ static char *put_pct10(char *q, int v)                /* 123 -> "12.3%" */
     q = put_i(q, v % 10);
     return put_s(q, "%");
 }
+static char *put_mmss(char *q, uint32_t s)
+{
+    q = put_i(q, (int)(s / 60u));
+    *q++ = ':';
+    *q++ = (char)('0' + s % 60u / 10u);
+    *q++ = (char)('0' + s % 10u);
+    *q = 0;
+    return q;
+}
+
+static void draw_soak(int band)                       /* SOAK (probe build): progress, then the result */
+{
+    static const char *const SS[] = {"", "SOAK ", "SOAK PASSED", "SOAK INTERRUPTED", "SOAK STOPPED"};
+    char t[48], *q;
+    int run = soak.state == SOAK_RUNNING;
+    uint32_t col = run ? C_AMB : soak_pass() ? RGB(80, 220, 120) : RGB(255, 80, 60);
+    if (band == 0) {
+        q = put_s(t, soak.state == SOAK_DONE && !soak_pass() ? "SOAK FAILED" : SS[soak.state < 5u ? soak.state : 0]);
+        if (run || soak.state != SOAK_DONE) {
+            q = put_s(put_mmss(put_s(q, run ? "" : " AT "), soak.elapsed_s), run ? " / " : "");
+            if (run)
+                put_mmss(q, X0X_SOAK_MIN * 60u);
+        }
+        cv_text(4, 2, &FONT_B, t, col);
+        q = put_s(t, "RUNS ");
+        q = put_i(q, (int)soak.runs);
+        q = put_s(q, "   ");
+        if (soak.gave_up)
+            put_s(put_mmss(put_s(q, "1 CORE (2ND LOST AT "), soak.lost_at_s), ")");
+        else
+            put_s(q, plat_cpu2_on() ? "2 CORES" : "1 CORE");
+        cv_text(4, 24, &FONT_S, t, C_WHITE);
+        q = put_s(t, "SYS320 ");
+        q = put_s(q, plat_clk320_state());
+        if (*plat_clk320_reason())
+            q = put_s(put_s(q, " "), plat_clk320_reason());
+        q = put_s(q, "  FS ");
+        put_i(put_s(put_i(q, (int)soak.fs_min), "-"), (int)soak.fs_max);
+        cv_text(4, 46, &FONT_XS, t, C_GRAY);
+        return;
+    }
+    q = put_s(t, "BAD READS ");
+    q = put_i(q, (int)soak.bad);
+    q = put_s(q, "    DROPOUTS ");
+    put_i(q, (int)soak.xruns);
+    cv_text(4, 2, &FONT_S, t, soak.bad || soak.xruns ? RGB(255, 80, 60) : C_WHITE);
+    q = put_s(t, "WORST CASE ");
+    q = put_pct10(q, (uint16_t)soak.max_load10);
+    q = put_s(q, " (PEAK ");
+    put_s(put_i(q, (int)soak.max_peak), "%)");
+    cv_text(4, 18, &FONT_S, t, C_WHITE);
+    q = put_s(t, "CLOCK ");                           /* the loop timed at boot: 360 x ticks before / after */
+    if (plat_clk320_loop_mhz10()) {
+        q = put_s(put_i(q, (int)(plat_clk320_loop_mhz10() / 10u)), " MHz  (LOOP ");
+        q = put_s(put_i(q, (int)plat_clk320_loop_before()), " > ");
+        put_s(put_i(q, (int)plat_clk320_loop_after()), ")");
+    } else if (soak.mhz10)
+        put_s(put_i(q, (int)(soak.mhz10 / 10u)), " MHz");
+    else
+        put_s(q, "? (POWER OFF AND ON)");
+    cv_text(4, 34, &FONT_S, t, C_WHITE);
+    cv_text(4, 52, &FONT_XS, run ? "HOME OR PLAY: STOP THE SOAK" : "POWER OFF TO START AGAIN", C_DIM);
+}
+
 static void draw_perf(int band)
 {
     static const char *const SN[ENG_PROF_N] = {"909", "808", "303A", "303B", "BREAK", "FX", "MASTER", "SEQ"};
     char t[40], *q;
     int k;
+#if X0X_SOAK_MIN
+    if (soak.state != SOAK_IDLE && soak.state != SOAK_RUNNING) {   /* while running: the normal PERF TEST
+                                                                    * screen, as a test run by hand draws it */
+        draw_soak(band);
+        return;
+    }
+#endif
     if (band == 0) {
         q = put_s(t, "CLOCK ");
         if (perf.mhz10) {
@@ -3442,10 +3582,15 @@ static void draw_perf(int band)
             q = put_i(q, perf.stall[1]);
             q = put_s(q, "%  WRITE ");
             put_s(put_i(q, perf.stall[2]), "%");
-        } else
-            put_s(t, "STALLS OFF (KNOB 1)");
-        cv_text(4, 46, &FONT_XS, t, perf.stalls_on ? C_GRAY : C_DIM);
-        if (!perf.stalls_on && plat_irq_stack_size()) {   /* the interrupts' 8 KiB: the deepest so far */
+        } else {                                      /* PROBE: the switch and the audio rate */
+            q = put_s(t, "SYS320 ");
+            q = put_s(q, plat_clk320_state());
+            if (*plat_clk320_reason())
+                q = put_s(put_s(q, " "), plat_clk320_reason());
+            put_i(put_s(q, "  FS "), (int)plat_fs_meas);
+        }
+        cv_text(4, 46, &FONT_XS, t, perf.stalls_on ? C_GRAY : C_HI);
+        if (perf.stalls_on && 0 && plat_irq_stack_size()) {   /* PROBE build: this line shows SYS320 instead */
             q = put_s(t, "IRQ STACK ");
             q = put_i(q, (int)plat_irq_stack_used());
             q = put_s(q, " / ");
@@ -4137,6 +4282,7 @@ void ui_frame(void)
     undo_tick();
     autosave();
     perf_test_tick();
+    soak_tick();
     if (ui.view == V_PERF && !perf_testing())
         perf_window(0);
     for (i = 0; i < NPARTS; i++)

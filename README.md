@@ -1,79 +1,120 @@
-# X0X for the M-VAVE FM-1
+# fm1-clk320-probe
 
-X0X turns the M-VAVE FM-1 into a groovebox: a **909**, an **808**, two **303s** with an acid line
-generator, and a **breakbeat player**, all playing at once. Each part can play its own pattern,
-you can string patterns into a song, and you can record knob moves. Everything runs in stereo,
-with a shared reverb and tape delay and a punchy master compressor. Over USB, the FM-1 is both a
-MIDI device and an audio input, with no driver needed.
+Test firmware for the M-VAVE FM-1: [X0X](https://github.com/charlesvestal/fm1-x0x) 1.0.6 with both
+cores running at JieLi's rated **320 MHz** instead of the FM-1's 360 MHz, **without raising any
+supply voltage**. It exists to check, on as many units as possible, whether in-spec dual core
+avoids the second-core misreads some FM-1s show at 360 MHz.
 
-The factory sound is set up for big beat, so it should make noise the moment you press PLAY.
+The method, the sequence, the reference code and the results so far are in the study:
+**[FM-1 320 MHz Dual Core](https://claude.ai/code/artifact/49894621-e5be-4d22-a585-71fdc09626c6)**.
 
-[![X0X running on the FM-1 (watch on YouTube)](https://img.youtube.com/vi/cZLYrZaLDUk/maxresdefault.jpg)](https://www.youtube.com/watch?v=cZLYrZaLDUk)
+> **Status: one unit tested.** On it, every 360 MHz run failed within its first two PERF TESTs,
+> and a 30-minute soak at 320 MHz passed (132 runs, two cores, 0 bad reads, 0 dropouts).
+> Reports from more units are what this repository is for.
 
-- **Try it in your browser** (no FM-1 needed): <https://charlesvestal.github.io/fm1-x0x/emu/>
-- **Install it** (Chrome or Edge, with the FM-1 plugged in): <https://charlesvestal.github.io/fm1-x0x/install/>
-- **Read the manual**: <https://charlesvestal.github.io/fm1-x0x/manual/>
-- **Download the firmware file**: [releases](https://github.com/charlesvestal/fm1-x0x/releases)
+X0X's own README is in [README.x0x.md](README.x0x.md).
 
-> **X0X is in beta.** It's solid for everyday playing, but a very busy pattern can push the FM-1
-> to its limit. When that happens, X0X trades a little sound quality to keep playing rather than
-> drop out. Installing it is at your own risk, though it's hard to get stuck: the web installer
-> can put M-VAVE's firmware back, an FM-1 that keeps crashing starts in a safe mode, and the
-> manual's Troubleshooting section covers the rest.
+## What it changes
 
-## What's inside
+- **At boot, the clock goes from 360 to 320 MHz**, in the order JieLi's SDK uses
+  (`firmware/hal/fm1_clk320.h`): the flash controller and the cache are stopped around the PLL
+  change and retimed after it. It runs from RAM with interrupts off, after the screen is up and
+  before the second core, audio and USB start.
+- **Nothing else moves**: no voltage is raised, the boot sector is not written, and installing any
+  other firmware replaces it as usual. All other behaviour is X0X 1.0.6.
+- **It refuses to switch** if the clock registers are not as expected, and says why.
+- **PERF** (GLO > PERFORMANCE) gains a bottom line: `SYS320 <state>  FS <audio rate>`.
+- **To fit the flash**, the ride and crash samples lose 1,024 frames (23 ms) of their quiet tails.
 
-| Part | What it is | Based on |
-|---|---|---|
-| 909 | 11 voices: modelled kick, snare, toms, rim and clap, with sampled hats and cymbals | [9W9](https://github.com/athousanddetails/schwung-9W9) (samples from ER-99) |
-| 808 | 11 tracks, including the 808's tom/conga, rim/claves and clap/maracas switches | [8W8](https://github.com/athousanddetails/schwung-8W8) |
-| 303 A and B | Open303 with Devilfish-style ranges, each with a TB-3PO line generator | [schwung-303](https://github.com/charlesvestal/schwung-303), [schwung-tb3po](https://github.com/charlesvestal/schwung-tb3po) |
-| Break | A loop cut into eight slices and rearranged as it plays | [BB Gen](https://github.com/mestela/schwung-breakbeat) |
+## The packages
 
-Each part has its own step length (up to 64 steps) and rate, so parts can drift against each
-other. Pattern changes wait for the end of the bar, and patterns can be chained.
+Four packages, on the [releases](../../releases) page or built with `tools/build_probe.sh`:
 
-X0X is a fork of [Felucca](https://github.com/hugelton/Felucca) by Leo Kuroshita (Hügelton
-Instruments). It keeps Felucca's foundations (the hardware layer, USB, the update loader, the web
-installer and the storage) and replaces the instrument on top.
+| Package | Clock | Load |
+| --- | --- | --- |
+| `x0x-1.0.6-control-360.fwsc` | stays at 360 MHz | PERF TEST by hand |
+| `x0x-1.0.6-probe-320.fwsc` | switches to 320 MHz | PERF TEST by hand |
+| `x0x-1.0.6-control-360-soak30.fwsc` | stays at 360 MHz | 30 minutes of PERF TEST from boot, then a report |
+| `x0x-1.0.6-probe-320-soak30.fwsc` | switches to 320 MHz | 30 minutes of PERF TEST from boot, then a report |
 
-## Your own breaks
+## Before you install
 
-X0X doesn't ship with any recorded breaks, only two loops played by its own 909. You can load
-your own into the FM-1's three sample slots, which hold about nine one-bar loops in total.
-The [break loops page](https://charlesvestal.github.io/fm1-x0x/breaks/) does it from Chrome or
-Edge (drop the files, press Upload); from the command line:
+- **At your own risk.** Have a way back: M-VAVE's updater or the web installer of the firmware
+  you normally run.
+- **Power-cycle after every install.** A soft reset keeps the PLL where the last firmware left
+  it, so without a cold start a "360" build may really run at 320, and the probe cannot time its
+  switch. A power cycle always returns to the boot loader's 360 MHz.
+- **If the switch ever fails**, the reset is not counted as a failed boot and the switch is not
+  tried again until power-off, so the FM-1 does not march into safe mode or UBOOT. The FM-1's
+  ROM update mode cannot be overwritten and stays the last resort.
+- **Saved projects**: X0X 1.0.6 writes its project only when you press SAVE. If your usual
+  firmware keeps projects you care about, do not press SAVE.
 
-```
-tools/upload_breaks.py --bars amen.wav think.wav ...   # take one bar of each and upload them
-tools/upload_breaks.py --dry-run OUTDIR ...            # see what fits, without the FM-1
-```
+Install from a terminal (needs `mido` and `python-rtmidi`):
 
-Recorded breaks belong to whoever made them and aren't covered by this project's licence.
-
-## Building and testing
-
-[BUILDING.md](BUILDING.md) explains the toolchain. In short:
-
-```
-tests/run_tests.sh      # the maths, the sequencer, every engine against its original, the app in a simulator
-./build.sh              # build/x0x.fwsc
+```sh
+python3 tools/fm1_install.py x0x-1.0.6-control-360-soak30.fwsc
 ```
 
-`host/x0x_host` runs the whole app on a computer from a script (`tests/scenarios/*.x0x`). Button
-presses, keys, knob turns and MIDI go in; audio and screenshots come out. That's how most of
-X0X is tested before it reaches the FM-1.
+## How to test
 
-## Licence and credits
+1. Install **`control-360-soak30`**, power-cycle, and leave it alone. About 5 s after boot it opens
+   PERF and runs PERF TEST back to back on the normal screen. Do not press HOME or PLAY (they stop
+   it), and keep it on USB power.
+2. When it ends (or as soon as the top right shows `1 CORE: BAD READS`), note the result.
+3. Install **`probe-320-soak30`**, power-cycle, and do the same.
 
-X0X is GPL-3.0-only, like Felucca, 9W9, 8W8 and schwung-tb3po. Open303 (by Robin Schmidt) is
-MIT. BB Gen is ported from mestela's schwung-breakbeat with the author's permission. The 909's
-hi-hat, ride and crash samples come from ER-99 (Matthew Cieplak, GPL-3.0). The fonts are Barlow
-Semi Condensed and Terminus (SIL OFL 1.1).
+The order matters less than keeping both runs alike: same power source, similar temperature, and
+the normal PERF TEST screen. On the tested unit, a build that drew its own status screen instead
+did not fail at 360 in 6 runs, while the normal screen failed on run 1: screen activity appears
+to change the result.
 
-Felucca's own assets that aren't under its GPL (the icon set, the panel photo and the Hügelton
-drum pack) aren't part of this fork.
+The manual packages do the same with PERF TEST started by hand (GLO > PERFORMANCE > SEL).
 
-M-VAVE and FM-1 are trademarks of their owners. TR-808, TR-909 and TB-303 are Roland trademarks,
-used here only to describe what the parts are modelled on. X0X isn't affiliated with or endorsed
-by M-VAVE, Roland or Hügelton Instruments.
+## Reading the report
+
+At the end of a soak, PERF shows (until power-off):
+
+- `SOAK PASSED` only with two cores throughout, 0 bad reads and 0 dropouts; otherwise
+  `SOAK FAILED`, `SOAK INTERRUPTED AT mm:ss` (a crash or hang: the FM-1 restarted) or
+  `SOAK STOPPED` (a key).
+- `RUNS`, the cores (and when the second was lost), `BAD READS`, `DROPOUTS`, the worst case and
+  its peak.
+- `CLOCK nnn MHz (LOOP a > b)`: the core clock from a fixed instruction loop timed against the
+  24 MHz crystal before and after the switch (360 × a / b). `?` means the boot did not start
+  cold at 360.
+- `SYS320 <state>  FS <min-max>`: whether the switch ran (or which check refused it) and the
+  audio rate range.
+
+Dropouts with two cores and 0 bad reads mean the CPU ran out (320 MHz is about 11 % slower), not
+a misread.
+
+## What to report
+
+Open an issue with, for each run: the package, the power source (USB or battery), the whole
+report screen (a photo is fine), and anything unusual. A refused switch (`SKIPPED: …`) is worth
+reporting too: it means a unit's clock setup differs from the tested one.
+
+## Building
+
+Set up the X0X build as in [BUILDING.md](BUILDING.md) (the JieLi toolchain and the AC79 SDK),
+then:
+
+```sh
+tools/build_probe.sh            # all four packages into out/
+SOAK_MIN=15 tools/build_probe.sh   # shorter soaks
+```
+
+The builds are reproducible: the same source gives the same packages, byte for byte.
+
+## Credits and licence
+
+A fork of [X0X](https://github.com/charlesvestal/fm1-x0x) by Charles Vestal, itself a fork of
+[Felucca](https://github.com/hugelton/Felucca) by Leo Kuroshita (Hügelton Instruments). The
+second core's start and its misread detection come from X0X, [Melodee](https://github.com/keremimo/melodee)
+(Kerem Kilic) and Jangada (zednaked); the PLL2 register identification from johnskiller's Melodee
+PR #27 with Charles Vestal's register reads. The switch sequence follows the JieLi AC79 SDK
+(Apache-2.0). The study's Credits section lists more.
+
+GPL-3.0-only, as X0X ([LICENSE](LICENSE)), except `firmware/hal/fm1_clk320.h`, which is MIT so any
+FM-1 firmware can use it; see [LICENSING.md](LICENSING.md).

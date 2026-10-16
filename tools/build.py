@@ -218,10 +218,13 @@ def build_app():
     flags = [*CFLAGS, *FPU, "-Ifirmware/hal", "-Ifirmware/src", "-Ibuild/gen"]
     if VERSION and os.environ.get("X0X_DEBUG") == "1":
         raise SystemExit("X0X_DEBUG=1 (register peek / poke over USB) is for development builds only")
-    for flag in ("X0X_CDC", "X0X_DEBUG"):
+    for flag in ("X0X_CDC", "X0X_DEBUG", "X0X_CLK320"):
         v = os.environ.get(flag)    # unset: the default in firmware/src/x0x.c
         if v in ("0", "1"):
             flags.append(f"-D{flag}={v}")
+    v = os.environ.get("X0X_SOAK_MIN")      # probe build: minutes of PERF TEST from boot (0: none)
+    if v and v.isdigit():
+        flags.append(f"-DX0X_SOAK_MIN={int(v)}u")
     flags.append(f'-DFELUCCA_ID="{PRODUCT}"')
     if VERSION:
         flags.append(f'-DX0X_VERSION="{VERSION}"')

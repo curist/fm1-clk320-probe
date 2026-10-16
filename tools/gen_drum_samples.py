@@ -119,6 +119,10 @@ def main():
     total = 0
     for name, fn in SAMPLES:
         pcm, bits = read_wav(ASSETS / fn)
+        if name in ("x0x_smp_ride", "x0x_smp_crash"):   # PROBE build: 2 KiB each of flash for the SYS320
+            pcm = list(pcm[:-1024])                 # probe and the soak, off the quiet tails, faded over 256 frames
+            for i in range(256):
+                pcm[-256 + i] = int(pcm[-256 + i] * (255 - i) / 256)
         total += len(pcm)
         hdr.append(f"/* {fn}: {len(pcm)} frames, source {bits}-bit */")
         hdr.append(f"#define {name.upper()}_LEN {len(pcm)}u")
