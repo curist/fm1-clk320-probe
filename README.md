@@ -17,7 +17,7 @@ X0X's own README is in [README.x0x.md](README.x0x.md).
 
 ## What it changes
 
-The whole change is one commit on top of X0X 1.0.6: `git diff v1.0.6` shows it.
+Everything sits on top of X0X 1.0.6: `git diff v1.0.6` shows the whole change.
 
 - **At boot, the clock goes from 360 to 320 MHz**, in the order JieLi's SDK uses
   (`firmware/hal/fm1_clk320.h`): the flash controller and the cache are stopped around the PLL
