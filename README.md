@@ -2,19 +2,22 @@
 
 Test firmware for the M-VAVE FM-1: [X0X](https://github.com/charlesvestal/fm1-x0x) 1.0.6 with both
 cores running at JieLi's rated **320 MHz** instead of the FM-1's 360 MHz, **without raising any
-supply voltage**. It exists to check, on as many units as possible, whether in-spec dual core
-avoids the second-core misreads some FM-1s show at 360 MHz.
+supply voltage**. It is the reference for the study below: the patches to read, and the packages
+to reproduce its tests on your own unit.
 
 The method, the sequence, the reference code and the results so far are in the study:
 **[FM-1 320 MHz Dual Core](https://claude.ai/code/artifact/49894621-e5be-4d22-a585-71fdc09626c6)**.
 
-> **Status: one unit tested.** On it, every 360 MHz run failed within its first two PERF TESTs,
-> and a 30-minute soak at 320 MHz passed (132 runs, two cores, 0 bad reads, 0 dropouts).
-> Reports from more units are what this repository is for.
+> **One unit tested.** On it, every 360 MHz run failed within its first two PERF TESTs, and a
+> 30-minute soak at 320 MHz passed (132 runs, two cores, 0 bad reads, 0 dropouts).
+>
+> This repository is a read-only reference: issues, pull requests and discussions are off.
 
 X0X's own README is in [README.x0x.md](README.x0x.md).
 
 ## What it changes
+
+The whole change is one commit on top of X0X 1.0.6: `git diff v1.0.6` shows it.
 
 - **At boot, the clock goes from 360 to 320 MHz**, in the order JieLi's SDK uses
   (`firmware/hal/fm1_clk320.h`): the flash controller and the cache are stopped around the PLL
@@ -89,11 +92,8 @@ At the end of a soak, PERF shows (until power-off):
 Dropouts with two cores and 0 bad reads mean the CPU ran out (320 MHz is about 11 % slower), not
 a misread.
 
-## What to report
-
-Open an issue with, for each run: the package, the power source (USB or battery), the whole
-report screen (a photo is fine), and anything unusual. A refused switch (`SKIPPED: …`) is worth
-reporting too: it means a unit's clock setup differs from the tested one.
+A refused switch (`SKIPPED: …`) means that unit's clock setup differs from the tested one; the
+switch did not run and the unit stayed at 360 MHz.
 
 ## Building
 
