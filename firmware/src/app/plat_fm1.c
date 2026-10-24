@@ -148,8 +148,9 @@ uint32_t plat_cpu2_bad(void) { return fm1_c1_mb.bad; }
  * survives resets (.noinit) and is forgotten at power-off. A reset while the switch is under way
  * (ARMED) is not counted as a failed boot, and no switch is tried again until power-off (TRIPPED). */
 #define CLKP_MAGIC 0x434C4B33u                          /* "CLK3" */
-enum { CLKP_NONE, CLKP_ARMED, CLKP_DONE, CLKP_SKIPPED, CLKP_TRIPPED, CLKP_KEPT };
-static const char *const CLKP_N[] = {"-", "ARMED", "320 OK", "SKIPPED", "TRIPPED: 360 UNTIL OFF", "320 (KEPT BY RESET)"};
+enum { CLKP_NONE, CLKP_ARMED, CLKP_DONE, CLKP_SKIPPED, CLKP_TRIPPED, CLKP_KEPT, CLKP_BOOT };
+static const char *const CLKP_N[] = {"-", "ARMED", "320 OK", "SKIPPED", "TRIPPED: 360 UNTIL OFF", "320 (KEPT BY RESET)",
+                                     "320 (BOOT LOADER)"};
 static const char *const CLKP_E[] = {"", "ALREADY 320", "SYS MODE", "PLL2 NOT 270", "PLL2 REF", "DIVIDERS",
                                      "SYS NOT ON PLL", "USB ON PLL2", "SDRAM", "CACHE B9", "VERIFY", "CONTROL: STAYS 360"};
 struct clkp_s {
@@ -207,7 +208,7 @@ void plat_clk320_run(void)                              /* fm1_main: one core, I
         rc = FM1_CLK320_ECONTROL;                       /* the control build: checked, not switched */
 #endif
     if (rc) {
-        clkp.state = rc == FM1_CLK320_EALREADY ? CLKP_KEPT : CLKP_SKIPPED;
+        clkp.state = rc != FM1_CLK320_EALREADY ? CLKP_SKIPPED : fm1_clk320_main() ? CLKP_BOOT : CLKP_KEPT;
         clkp.reason = (uint32_t)rc;
         clkp.mult_after = clkp.mult_before;
         return;
@@ -230,9 +231,10 @@ void plat_clk320_run(void)                              /* fm1_main: one core, I
     }
 }
 
-const char *plat_clk320_state(void) { return clkp.state < 6u ? CLKP_N[clkp.state] : "?"; }
+const char *plat_clk320_state(void) { return clkp.state < 7u ? CLKP_N[clkp.state] : "?"; }
 const char *plat_clk320_reason(void) { return clkp.state == CLKP_SKIPPED && clkp.reason < 12u ? CLKP_E[clkp.reason] : ""; }
 uint32_t plat_clk320_mult(void) { return clkp.mult_after; }
+int plat_clk320_boot(void) { return clkp.state == CLKP_BOOT; }   /* the boot loader started at 320: nothing to time */
 /* the clock now x 10, from the loop timed at boot: 360 x before / after; 0 when the boot did not start at 360 */
 uint32_t plat_clk320_loop_mhz10(void)
 {

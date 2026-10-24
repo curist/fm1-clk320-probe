@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
-/* PROBE BUILD (fm1-clk320-probe): what the probe adds around fm1_clk320.h, which is the study's published listing
- * (MIT) byte for byte, so the soak tests exactly the code others copy. fm1_clk320.h needs RAMFN, REG32,
+/* PROBE BUILD (fm1-clk320-probe): what the probe adds around fm1_clk320.h (MIT): the study's published listing, plus
+ * the later "already 320" reading of a boot loader that starts at 320 (V16); the switch itself is the listing's,
+ * unchanged, so the soak tests the code others copy. fm1_clk320.h needs RAMFN, REG32,
  * SFC_CON and CACHE_CON (fm1_flash.h) and uint32_t before it.
  *
  *   FM1_CLK320_E*            fm1_clk320_check's return values, named for the report
@@ -18,7 +19,8 @@
 
 enum {
     FM1_CLK320_OK = 0,
-    FM1_CLK320_EALREADY,                        /* PLL2 already at 240 (a soft reset kept a switch) */
+    FM1_CLK320_EALREADY,                        /* already 320: PLL2 at 240 (a soft reset kept a switch), or SYS on
+                                                 * the main PLL's 320 (the boot loader's: V16) */
     FM1_CLK320_EMODE,                           /* SYS not on PLL2 VCO * 2/3 */
     FM1_CLK320_EMULT,                           /* PLL2 not at 270 */
     FM1_CLK320_EREF,                            /* PLL2 reference not 2 MHz */

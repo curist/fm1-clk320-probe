@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: MIT
  * SYS 360 -> 320 MHz at boot, after the JieLi AC79 SDK's sys_clock_update (Apache-2.0),
- * PLL2-VCO path with the SDK's 320 MHz row (HSB 160, SFC 80, LSB 53). */
+ * PLL2-VCO path with the SDK's 320 MHz row (HSB 160, SFC 80, LSB 53). A boot loader that already starts at 320
+ * (M-VAVE's V16: SYS source 2, off the main PLL) is reported as already 320 and left alone; fm1_clk320_mhz() reads
+ * the clock now. */
 #define FCLK_SYS_DIV    REG32(0x10008u)   /* [17:16] HSB = SYS/(n+1); [10:8] LSB = HSB/(n+1) */
 #define FCLK_CLK_CON0   REG32(0x1000Cu)   /* b8 SYS from the PLL (0: RC); b1 RC16M on */
 #define FCLK_CLK_CON2   REG32(0x10014u)   /* [3:0] SYS source: 6 = PLL2 VCO * 2/3 */
@@ -18,12 +20,27 @@ typedef struct { uint32_t pll2_con1, sys_div, sfc_baud, sfc_con, cache_b9; } fm1
 
 static inline uint32_t fm1_clk320_mult(void) { return (FCLK_PLL2_CON1 & 0xFFFu) + 2u; }
 
+/* SYS on the main PLL's 320 MHz output, how M-VAVE's V16 boot loader starts the chip: source 2 (the main PLL's 480
+ * MHz x 2/3, the SDK's 320 MHz row; USB needs that PLL at 480) with [7:4], its dividers, at 0 */
+static inline int fm1_clk320_main(void) { return (FCLK_CLK_CON2 & 0xFFu) == 2u && (FCLK_CLK_CON0 & 0x100u); }
+
+/* the core clock now: 320, 360, or 0 (a setup none of these) */
+static inline uint32_t fm1_clk320_mhz(void)
+{
+    uint32_t osc = (FCLK_PLL_CON & 0x0C000000u) == 0x08000000u ? 40000000u : 24000000u;
+    if (fm1_clk320_main()) return 320u;
+    if ((FCLK_CLK_CON2 & 15u) != 6u || !(FCLK_CLK_CON0 & 0x100u)) return 0u;
+    if (osc / (((FCLK_PLL2_CON0 >> 2) & 31u) + 2u) != 2000000u) return 0u;
+    return fm1_clk320_mult() == 240u ? 320u : fm1_clk320_mult() == 270u ? 360u : 0u;
+}
+
 /* 0 = the expected state; fills p. Any other value: do not switch. */
 static int fm1_clk320_check(fm1_clk320_t *p)
 {
     uint32_t osc = (FCLK_PLL_CON & 0x0C000000u) == 0x08000000u ? 40000000u : 24000000u;
     uint32_t ref = osc / (((FCLK_PLL2_CON0 >> 2) & 31u) + 2u);
     uint32_t div = FCLK_SYS_DIV, cache = CACHE_CON, n;
+    if (fm1_clk320_main()) return 1;                      /* already 320: the boot loader's (V16) */
     if (fm1_clk320_mult() == 240u) return 1;              /* already 320 (a soft reset keeps the PLL) */
     if ((FCLK_CLK_CON2 & 15u) != 6u) return 2;            /* SYS not on PLL2 VCO * 2/3 */
     if (fm1_clk320_mult() != 270u) return 3;              /* not the boot loader's 360 */

@@ -3517,6 +3517,8 @@ static void draw_soak(int band)                       /* SOAK (probe build): pro
         put_s(put_i(q, (int)plat_clk320_loop_after()), ")");
     } else if (soak.mhz10)
         put_s(put_i(q, (int)(soak.mhz10 / 10u)), " MHz");
+    else if (plat_clk320_boot())
+        put_s(q, "320 MHz (BOOT LOADER)");
     else
         put_s(q, "? (POWER OFF AND ON)");
     cv_text(4, 34, &FONT_S, t, C_WHITE);

@@ -51,6 +51,7 @@ for t in drum909 drum808 bass303 breaks; do
     [ -f "tests/host/run_$t.sh" ] && run "$t" sh "tests/host/run_$t.sh"
 done
 run storage sh -c "$CC -O2 -o $OUT/storage_test tests/storage_test.c && $OUT/storage_test"
+run clk320 sh -c "$CC $W -Wno-unused-function -o $OUT/clk320_test tests/host/clk320_test.c && $OUT/clk320_test"
 # the update path, against the firmware package (Felucca's tests; needs ./build.sh)
 if [ -f build/x0x.fwsc ]; then
     run ota-entry sh -c "$CC -o $OUT/ota_test tests/ota_test.c && $OUT/ota_test build/x0x.fwsc"

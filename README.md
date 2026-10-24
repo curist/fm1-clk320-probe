@@ -46,7 +46,11 @@ Four packages, on the [releases](../../releases) page or built with `tools/build
   you normally run.
 - **Power-cycle after every install.** A soft reset keeps the PLL where the last firmware left
   it, so without a cold start a "360" build may really run at 320, and the probe cannot time its
-  switch. A power cycle always returns to the boot loader's 360 MHz.
+  switch. A power cycle always returns to the boot loader's clock: 360 MHz with M-VAVE's V15 boot
+  loader, 320 MHz with V16's.
+- **On a V16 boot loader** (installed by M-VAVE's FM-1 firmware 016) the chip already starts at 320 MHz,
+  off the main PLL: the probe reports `320 (BOOT LOADER)` and switches nothing, and the control
+  build runs at 320 too. The 360/320 comparison needs a unit on the V15 boot loader.
 - **If the switch ever fails**, the reset is not counted as a failed boot and the switch is not
   tried again until power-off, so the FM-1 does not march into safe mode or UBOOT. The FM-1's
   ROM update mode cannot be overwritten and stays the last resort.
@@ -85,15 +89,18 @@ At the end of a soak, PERF shows (until power-off):
   its peak.
 - `CLOCK nnn MHz (LOOP a > b)`: the core clock from a fixed instruction loop timed against the
   24 MHz crystal before and after the switch (360 × a / b). `?` means the boot did not start
-  cold at 360.
+  cold at 360; `320 MHz (BOOT LOADER)`, that the boot loader started it at 320 (V16).
 - `SYS320 <state>  FS <min-max>`: whether the switch ran (or which check refused it) and the
   audio rate range.
 
 Dropouts with two cores and 0 bad reads mean the CPU ran out (320 MHz is about 11 % slower), not
 a misread.
 
+`SYS320 320 (BOOT LOADER)` means the boot loader already runs the chip at 320 MHz (V16); nothing
+was switched.
+
 A refused switch (`SKIPPED: …`) means that unit's clock setup differs from the tested one; the
-switch did not run and the unit stayed at 360 MHz.
+switch did not run and the unit stayed at its boot loader's clock.
 
 ## Building
 
